@@ -11,57 +11,9 @@ const protocol = new pmtiles.Protocol();
 maplibregl.addProtocol('pmtiles', protocol.tile);
 
 // ==========================================
-// 2. Definisi Peta Dasar (Basemaps)
+// 2. Definisi Peta Dasar (Basemaps) - 100% Gratis & Bebas API Key
 // ==========================================
 const BASEMAP_STYLES = {
-  positron: {
-    version: 8,
-    sources: {
-      'carto-positron': {
-        type: 'raster',
-        tiles: [
-          'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
-          'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
-          'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png'
-        ],
-        tileSize: 256,
-        attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-      }
-    },
-    layers: [
-      {
-        id: 'carto-positron-layer',
-        type: 'raster',
-        source: 'carto-positron',
-        minzoom: 0,
-        maxzoom: 20
-      }
-    ]
-  },
-  dark: {
-    version: 8,
-    sources: {
-      'carto-dark': {
-        type: 'raster',
-        tiles: [
-          'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-          'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-          'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'
-        ],
-        tileSize: 256,
-        attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-      }
-    },
-    layers: [
-      {
-        id: 'carto-dark-layer',
-        type: 'raster',
-        source: 'carto-dark',
-        minzoom: 0,
-        maxzoom: 20
-      }
-    ]
-  },
   osm: {
     version: 8,
     sources: {
@@ -83,6 +35,50 @@ const BASEMAP_STYLES = {
         source: 'osm-standard',
         minzoom: 0,
         maxzoom: 19
+      }
+    ]
+  },
+  streets: {
+    version: 8,
+    sources: {
+      'esri-streets': {
+        type: 'raster',
+        tiles: [
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'
+        ],
+        tileSize: 256,
+        attribution: 'Tiles &copy; Esri, DeLorme, NAVTEQ'
+      }
+    },
+    layers: [
+      {
+        id: 'esri-streets-layer',
+        type: 'raster',
+        source: 'esri-streets',
+        minzoom: 0,
+        maxzoom: 19
+      }
+    ]
+  },
+  light: {
+    version: 8,
+    sources: {
+      'esri-gray': {
+        type: 'raster',
+        tiles: [
+          'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'
+        ],
+        tileSize: 256,
+        attribution: 'Tiles &copy; Esri, HERE, Garmin'
+      }
+    },
+    layers: [
+      {
+        id: 'esri-gray-layer',
+        type: 'raster',
+        source: 'esri-gray',
+        minzoom: 0,
+        maxzoom: 16
       }
     ]
   },
@@ -117,7 +113,7 @@ const BASEMAP_STYLES = {
 const DEFAULT_LOCAL_PMTILES = './sample-data/rute_bandung.pmtiles';
 const SAMPLE_PROTOMAPS_URL = 'https://r2-public.protomaps.com/protomaps_sample_nz.pmtiles';
 
-let currentStyle = 'positron';
+let currentStyle = 'osm';
 let currentPmtilesInstance = null;
 let currentMetadata = null;
 let currentLayers = [];
