@@ -13,7 +13,7 @@ dist_pmtiles/
 .wrangler/
 
 # Large GIS Files (keep small samples only)
-*.pmtiles
+# *.pmtiles
 *.mbtiles
 *.gpkg
 *.shp
