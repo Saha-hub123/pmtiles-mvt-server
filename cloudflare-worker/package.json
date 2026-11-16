@@ -1,0 +1,16 @@
+{
+  "name": "mvt-pmtiles-worker",
+  "version": "1.0.0",
+  "description": "Serverless MVT Vector Tile & TileJSON Server on Cloudflare Workers + R2",
+  "main": "worker.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "pmtiles": "^3.0.7"
+  },
+  "devDependencies": {
+    "wrangler": "^3.80.0"
+  }
+}

@@ -1,0 +1,13 @@
+name = "mvt-pmtiles-worker"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Hubungkan Cloudflare Worker ke R2 Bucket secara internal (Privat, aman, tanpa perlu aktifkan r2.dev domain)
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "geo-tiles" # GANTI dengan nama bucket R2 Anda
+
+# Konfigurasi Cache agar tile yang sering diakses langsung disajikan dari Cloudflare CDN Edge Cache
+[vars]
+CACHE_MAX_AGE = "86400" # 1 hari
+ALLOWED_ORIGIN = "*"

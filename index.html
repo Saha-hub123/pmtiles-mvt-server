@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MVT Vector Tile Server & Viewer | Cloudflare R2 + PMTiles</title>
+
+  <!-- MapLibre GL CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Container Peta -->
+  <div id="map"></div>
+
+  <!-- Panel Kontrol Floating -->
+  <aside class="control-panel" id="controlPanel">
+    <div class="panel-header">
+      <div class="brand">
+        <i class="fa-solid fa-layer-group text-primary"></i>
+        <h2>PMTiles + R2 Server</h2>
+      </div>
+      <button id="togglePanelBtn" title="Sembunyikan / Buka Panel" aria-label="Toggle Panel">
+        <i class="fa-solid fa-chevron-left"></i>
+      </button>
+    </div>
+
+    <div class="panel-body">
+      <!-- Input URL PMTiles -->
+      <section class="section-card">
+        <label for="pmtilesUrl">
+          <i class="fa-solid fa-cloud-arrow-down"></i> URL PMTiles (Cloudflare R2)
+        </label>
+        <div class="input-group">
+          <input 
+            type="text" 
+            id="pmtilesUrl" 
+            placeholder="https://pub-xxx.r2.dev/my-data.pmtiles" 
+            spellcheck="false"
+          />
+          <button id="btnLoadUrl" class="btn btn-primary" title="Muat Data PMTiles">
+            <i class="fa-solid fa-play"></i> Muat
+          </button>
+        </div>
+        <p class="help-text">
+          Masukkan URL publik Cloudflare R2 Anda atau gunakan tombol sampel di bawah.
+        </p>
+
+        <!-- Presets / Quick Load -->
+        <div class="quick-presets">
+          <span>Preset Cepat:</span>
+          <button class="badge-btn" id="presetSample">Sample Protomaps</button>
+          <button class="badge-btn" id="presetLocal">Petunjuk R2</button>
+        </div>
+      </section>
+
+      <!-- Status & Metadata Arsip -->
+      <section class="section-card" id="metadataCard">
+        <div class="section-title">
+          <i class="fa-solid fa-circle-info"></i> Metadata Arsip
+          <span id="loadBadge" class="status-badge status-idle">Idle</span>
+        </div>
+        <div id="metadataContent" class="metadata-grid">
+          <div class="meta-item">
+            <span class="meta-label">Zoom Range</span>
+            <span class="meta-value" id="metaZoom">-</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Bounds</span>
+            <span class="meta-value" id="metaBounds">-</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Format / Tipe</span>
+            <span class="meta-value" id="metaType">MVT (Vector)</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Layer Name</span>
+            <span class="meta-value" id="metaLayers">-</span>
+          </div>
+        </div>
+
+        <button id="btnFitBounds" class="btn btn-secondary w-full mt-2" disabled>
+          <i class="fa-solid fa-expand"></i> Zoom ke Batas Data (Bounds)
+        </button>
+      </section>
+
+      <!-- Basemap Switcher -->
+      <section class="section-card">
+        <div class="section-title">
+          <i class="fa-solid fa-map"></i> Peta Dasar (Basemap)
+        </div>
+        <div class="basemap-grid">
+          <button class="basemap-btn active" data-style="positron">
+            <i class="fa-solid fa-sun"></i> Light
+          </button>
+          <button class="basemap-btn" data-style="dark">
+            <i class="fa-solid fa-moon"></i> Dark
+          </button>
+          <button class="basemap-btn" data-style="osm">
+            <i class="fa-solid fa-globe"></i> OSM
+          </button>
+          <button class="basemap-btn" data-style="satellite">
+            <i class="fa-solid fa-satellite"></i> Satelit
+          </button>
+        </div>
+      </section>
+
+      <!-- Styling Kontrol Layer MVT -->
+      <section class="section-card" id="stylingCard">
+        <div class="section-title">
+          <i class="fa-solid fa-palette"></i> Style Vektor MVT
+        </div>
+        <div class="control-row">
+          <label for="colorPicker">Warna Utama:</label>
+          <input type="color" id="colorPicker" value="#00d2ff" />
+        </div>
+        <div class="control-row">
+          <label for="opacitySlider">Opacity Fill: <span id="opacityVal">0.6</span></label>
+          <input type="range" id="opacitySlider" min="0" max="1" step="0.05" value="0.6" />
+        </div>
+        <div class="control-row">
+          <label for="lineWidthSlider">Lebar Garis: <span id="lineWidthVal">2px</span></label>
+          <input type="range" id="lineWidthSlider" min="0.5" max="8" step="0.5" value="2" />
+        </div>
+      </section>
+
+      <!-- Panduan Singkat -->
+      <section class="section-card guide-card">
+        <div class="section-title">
+          <i class="fa-solid fa-lightbulb"></i> Cara Kerja Arsitektur Ini
+        </div>
+        <ol class="guide-steps">
+          <li><strong>Cloudflare R2:</strong> Menyimpan file <code>.pmtiles</code> dengan gratis egress bandwidth ($0 transfer).</li>
+          <li><strong>GitHub Pages:</strong> Menyajikan web frontend ini (HTML/JS) secara statis.</li>
+          <li><strong>PMTiles Protocol:</strong> Browser melakukan <em>HTTP Range Request</em> langsung ke R2 hanya mengambil byte tile yang terlihat di viewport.</li>
+        </ol>
+      </section>
+    </div>
+  </aside>
+
+  <!-- Tombol Float untuk membuka panel saat diminimalkan -->
+  <button id="floatingOpenBtn" class="floating-open-btn hidden" title="Buka Panel Pengaturan">
+    <i class="fa-solid fa-bars"></i>
+  </button>
+
+  <!-- Modal / Drawer Atribut Fitur -->
+  <div id="featureDrawer" class="feature-drawer hidden">
+    <div class="drawer-header">
+      <h3><i class="fa-solid fa-info-circle"></i> Data Atribut Fitur MVT</h3>
+      <button id="closeDrawerBtn" title="Tutup">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="drawer-body" id="drawerBody">
+      <p class="empty-state">Klik pada fitur (titik, garis, poligon) di peta untuk melihat properti atributnya.</p>
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" class="loading-overlay hidden">
+    <div class="spinner"></div>
+    <p id="loadingText">Menghubungi Cloudflare R2...</p>
+  </div>
+
+  <!-- Library Scripts -->
+  <!-- 1. MapLibre GL JS -->
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <!-- 2. Protomaps PMTiles JS Protocol -->
+  <script src="https://unpkg.com/pmtiles@3.0.7/dist/pmtiles.js"></script>
+  <!-- 3. App Script -->
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+name: Convert GeoJSON to PMTiles (Tippecanoe)
+
+on:
+  workflow_dispatch:
+    inputs:
+      geojson_path:
+        description: 'Path ke file GeoJSON'
+        required: true
+        default: 'sample-data/sample_rute.geojson'
+      output_name:
+        description: 'Nama output file PMTiles (tanpa ekstensi)'
+        required: true
+        default: 'rute_bandung'
+
+jobs:
+  build-pmtiles:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Tippecanoe
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libsqlite3-dev zlib1g-dev
+          git clone https://github.com/felt/tippecanoe.git
+          cd tippecanoe
+          make -j$(nproc)
+          sudo make install
+          cd ..
+          tippecanoe --version
+
+      - name: Convert GeoJSON to PMTiles
+        run: |
+          mkdir -p dist_pmtiles
+          tippecanoe -zg \
+            --projection=EPSG:4326 \
+            -o "dist_pmtiles/${{ github.event.inputs.output_name }}.pmtiles" \
+            -l "${{ github.event.inputs.output_name }}" \
+            --drop-densest-as-needed \
+            --extend-zooms-if-still-dropping \
+            --force \
+            "${{ github.event.inputs.geojson_path }}"
+
+      - name: Upload PMTiles as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pmtiles-output
+          path: dist_pmtiles/*.pmtiles
+          retention-days: 7
+
+      - name: Optional Upload to Cloudflare R2
+        if: env.R2_BUCKET != ''
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          aws s3 cp dist_pmtiles/ s3://${R2_BUCKET}/ --recursive --exclude "*" --include "*.pmtiles"

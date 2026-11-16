@@ -1,0 +1,23 @@
+# OS & Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
+.vscode/
+.idea/
+
+# Node
+node_modules/
+dist/
+dist_pmtiles/
+.wrangler/
+
+# Large GIS Files (keep small samples only)
+*.pmtiles
+*.mbtiles
+*.gpkg
+*.shp
+*.shx
+*.dbf
+*.cpg
+*.prj
