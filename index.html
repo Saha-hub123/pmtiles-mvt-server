@@ -44,7 +44,7 @@
           <input 
             type="text" 
             id="pmtilesUrl" 
-            placeholder="./sample-data/rute_bandung.pmtiles" 
+            placeholder="./sample-data/kec-sukasari.pmtiles" 
             spellcheck="false"
           />
           <button id="btnLoadUrl" class="btn btn-primary" title="Muat Data PMTiles">
@@ -52,13 +52,14 @@
           </button>
         </div>
         <p class="help-text">
-          Bisa berupa URL R2 publik atau path repositori GitHub Pages (misal: <code>./sample-data/rute_bandung.pmtiles</code>).
+          Bisa berupa URL R2 publik atau file di GitHub Pages (misal: <code>./sample-data/kec-sukasari.pmtiles</code>).
         </p>
 
         <!-- Presets / Quick Load -->
         <div class="quick-presets">
           <span>Pilihan Cepat:</span>
-          <button class="badge-btn active-preset" id="presetBandung">📍 Rute Bandung (Lokal)</button>
+          <button class="badge-btn active-preset" id="presetSukasari">📍 Kec. Sukasari (Default)</button>
+          <button class="badge-btn" id="presetBandung">📍 Rute Ojek</button>
           <button class="badge-btn" id="presetSample">Sample Protomaps</button>
         </div>
 

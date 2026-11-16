@@ -109,19 +109,21 @@ const BASEMAP_STYLES = {
 // ==========================================
 // 3. Konfigurasi State & Variabel Global
 // ==========================================
-// File lokal bawaan di repository GitHub Pages ini
-const DEFAULT_LOCAL_PMTILES = './sample-data/rute_bandung.pmtiles';
+// Data awal default: Kecamatan Sukasari
+const DEFAULT_LOCAL_PMTILES = './sample-data/kec-sukasari.pmtiles';
 const SAMPLE_PROTOMAPS_URL = 'https://r2-public.protomaps.com/protomaps_sample_nz.pmtiles';
 
 let currentStyle = 'osm';
 let currentPmtilesInstance = null;
 let currentMetadata = null;
 let currentLayers = [];
+let activeLocalFile = null;
 let map = null;
 
 // DOM Elements
 const pmtilesUrlInput = document.getElementById('pmtilesUrl');
 const btnLoadUrl = document.getElementById('btnLoadUrl');
+const presetSukasari = document.getElementById('presetSukasari');
 const presetBandung = document.getElementById('presetBandung');
 const presetSample = document.getElementById('presetSample');
 const btnBrowseFile = document.getElementById('btnBrowseFile');
@@ -165,8 +167,8 @@ function initMap() {
   map = new maplibregl.Map({
     container: 'map',
     style: BASEMAP_STYLES[currentStyle],
-    center: [107.575, -6.885], // Bandung, Indonesia (Default koordinat rute ULBI)
-    zoom: 12,
+    center: [107.585, -6.860], // Sukasari, Bandung (Default)
+    zoom: 13,
     pitch: 0,
     bearing: 0
   });
@@ -177,13 +179,11 @@ function initMap() {
   map.addControl(new maplibregl.FullscreenControl(), 'top-right');
 
   map.on('load', () => {
-    // 1. Cek apakah ada query param ?url= di address bar
     const urlParams = new URLSearchParams(window.location.search);
     const queryUrl = urlParams.get('url');
 
-    // 2. Jika dibuka lewat file:/// (double click di file explorer)
     if (window.location.protocol === 'file:') {
-      console.warn('Halaman dibuka via protokol file://. HTTP fetch diblokir oleh kebijakan keamanan browser.');
+      console.warn('Halaman dibuka via protokol file://. HTTP fetch diblokir oleh browser.');
       pmtilesUrlInput.value = DEFAULT_LOCAL_PMTILES;
       showLocalFileBanner();
       return;
@@ -193,7 +193,7 @@ function initMap() {
       pmtilesUrlInput.value = queryUrl;
       loadPMTilesFromUrl(queryUrl);
     } else {
-      // Default: Muat data rute_bandung.pmtiles dari repo
+      // Default: Muat data kec-sukasari.pmtiles
       pmtilesUrlInput.value = DEFAULT_LOCAL_PMTILES;
       loadPMTilesFromUrl(DEFAULT_LOCAL_PMTILES);
     }
@@ -207,10 +207,10 @@ function showLocalFileBanner() {
   updateStatusBadge('idle', 'Mode Offline');
   alert(
     'PERHATIAN (Membuka via file://):\n\n' +
-    'Browser memblokir permintaan file lokal lewat URL jika dibuka langsung (file:///C:/...).\n\n' +
+    'Browser memblokir request file lewat URL jika dibuka langsung (file:///C:/...).\n\n' +
     'Solusi sangat mudah (pilih salah satu):\n' +
-    '1. Klik tombol "Pilih File .pmtiles dari Laptop" lalu pilih file rute_bandung.pmtiles Anda.\n' +
-    '2. Atau jalankan server lokal: ketik "python -m http.server 8000" di terminal lalu buka http://localhost:8000\n' +
+    '1. Klik tombol "Pilih File .pmtiles dari Laptop" lalu pilih file kec-sukasari.pmtiles Anda.\n' +
+    '2. Atau jalankan server lokal: ketik "python serve.py" di terminal lalu buka http://localhost:8000\n' +
     '3. Atau buka web ini yang sudah terpasang di GitHub Pages.'
   );
 }
@@ -224,7 +224,6 @@ async function loadPMTilesFromUrl(rawUrl) {
     return;
   }
 
-  // Cek jika berjalan di file:///
   if (window.location.protocol === 'file:') {
     showLocalFileBanner();
     return;
@@ -233,7 +232,7 @@ async function loadPMTilesFromUrl(rawUrl) {
   const fullUrl = resolveAbsoluteUrl(rawUrl.trim());
   let displayHost = 'Server';
   try {
-    displayHost = new URL(fullUrl).hostname || 'Lokal';
+    displayHost = new URL(fullUrl).hostname || 'GitHub Pages';
   } catch (e) {
     displayHost = 'Lokal';
   }
@@ -246,6 +245,7 @@ async function loadPMTilesFromUrl(rawUrl) {
     const pmtilesInstance = new pmtiles.PMTiles(fullUrl);
     protocol.add(pmtilesInstance);
     currentPmtilesInstance = pmtilesInstance;
+    activeLocalFile = null;
 
     // 2. Baca Header arsip (menggunakan HTTP Range Request)
     const header = await pmtilesInstance.getHeader();
@@ -283,9 +283,9 @@ async function loadPMTilesFromUrl(rawUrl) {
     if (err.message && err.message.toLowerCase().includes('cors')) {
       errorMsg += 'PENYEBAB: Terhalang CORS!\nJika menggunakan Cloudflare R2, pastikan aturan CORS sudah terpasang sesuai cors-r2.json.';
     } else if (err.message && (err.message.includes('404') || err.message.includes('Not Found'))) {
-      errorMsg += 'PENYEBAB: File tidak ditemukan (404)!\nPastikan file rute_bandung.pmtiles sudah ter-upload di folder sample-data/ pada GitHub Pages.';
+      errorMsg += 'PENYEBAB: File tidak ditemukan di server (404)!\nPastikan Anda sudah menjalankan "git push" agar file pmtiles ter-upload ke repositori GitHub Pages.';
     } else {
-      errorMsg += 'Tips:\n1. Pastikan URL benar.\n2. Jika di lokal, gunakan tombol "Pilih File .pmtiles dari Laptop" atau jalankan server lokal: python -m http.server 8000';
+      errorMsg += 'Tips:\n1. Pastikan URL benar.\n2. Jika menguji secara offline di laptop, gunakan tombol "Pilih File .pmtiles dari Laptop" atau jalankan: python serve.py';
     }
     alert(errorMsg);
   }
@@ -297,16 +297,18 @@ async function loadPMTilesFromUrl(rawUrl) {
 async function loadPMTilesFromFile(file) {
   if (!file) return;
 
+  activeLocalFile = file;
   showLoading(`Membaca file lokal: ${file.name}...`);
   updateStatusBadge('loading', 'Loading File');
 
   try {
-    // 1. Gunakan FileSource dari library PMTiles (tanpa perlu web server!)
+    // 1. Gunakan FileSource dari library PMTiles (membaca byte chunk langsung dari disk)
     const fileSource = new pmtiles.FileSource(file);
     const pmtilesInstance = new pmtiles.PMTiles(fileSource);
     
-    // Daftarkan ke protokol dengan key unik nama file
-    const uniqueSourceKey = `file://${file.name}_${Date.now()}`;
+    // Pastikan key file terdaftar sama persis di protokol pmtiles
+    const fileKey = file.name;
+    fileSource.getKey = () => fileKey;
     protocol.add(pmtilesInstance);
     currentPmtilesInstance = pmtilesInstance;
 
@@ -322,9 +324,9 @@ async function loadPMTilesFromFile(file) {
     pmtilesUrlInput.value = `[File Lokal: ${file.name}]`;
     displayMetadata(header, metadata);
 
-    // 4. Render ke peta
+    // 4. Render ke peta menggunakan fileKey yang sudah didaftarkan
     let vectorLayerNames = extractLayerNames(metadata);
-    renderMvtLayers(uniqueSourceKey, header, vectorLayerNames);
+    renderMvtLayers(fileKey, header, vectorLayerNames);
 
     // 5. Zoom ke batas data
     fitToBounds(header);
@@ -391,8 +393,24 @@ function renderMvtLayers(sourceKey, header, vectorLayerNames) {
   currentLayers = [];
 
   layersToCreate.forEach((sourceLayerName) => {
-    // 1. Polygon Fill Layer (Area / Zona)
+    const nameLower = sourceLayerName.toLowerCase();
+
+    // 1. Polygon Fill Layer (Area / Bangunan / Air / Zona)
     const fillLayerId = `pmtiles-fill-${sourceLayerName}`;
+    let fillColor = primaryColor;
+    let fillOpacity = opacity;
+
+    if (nameLower.includes('water')) {
+      fillColor = '#38bdf8';
+      fillOpacity = 0.7;
+    } else if (nameLower.includes('building')) {
+      fillColor = '#f97316';
+      fillOpacity = 0.6;
+    } else if (nameLower.includes('earth') || nameLower.includes('landcover') || nameLower.includes('landuse')) {
+      fillColor = '#84cc16';
+      fillOpacity = 0.25;
+    }
+
     map.addLayer({
       id: fillLayerId,
       type: 'fill',
@@ -400,28 +418,41 @@ function renderMvtLayers(sourceKey, header, vectorLayerNames) {
       ...(sourceLayerName !== 'default' ? { 'source-layer': sourceLayerName } : {}),
       filter: ['==', '$type', 'Polygon'],
       paint: {
-        'fill-color': primaryColor,
-        'fill-opacity': opacity
+        'fill-color': fillColor,
+        'fill-opacity': fillOpacity
       }
     });
     currentLayers.push(fillLayerId);
 
-    // 2. Line Layer (Rute Jalan / Garis Batas)
+    // 2. Line Layer (Jalan / Batas Administrasi / Garis Pantai)
     const lineLayerId = `pmtiles-line-${sourceLayerName}`;
+    let lineColor = '#0284c7';
+    let lineW = lineWidth;
+
+    if (nameLower.includes('road')) {
+      lineColor = '#ea580c';
+      lineW = lineWidth * 1.2;
+    } else if (nameLower.includes('boundary') || nameLower.includes('boundaries')) {
+      lineColor = '#dc2626';
+      lineW = lineWidth * 1.5;
+    } else if (nameLower.includes('water')) {
+      lineColor = '#0284c7';
+    }
+
     map.addLayer({
       id: lineLayerId,
       type: 'line',
       source: sourceId,
       ...(sourceLayerName !== 'default' ? { 'source-layer': sourceLayerName } : {}),
       paint: {
-        'line-color': '#0284c7', // Warna garis tegas
-        'line-width': lineWidth,
+        'line-color': lineColor,
+        'line-width': lineW,
         'line-opacity': 0.95
       }
     });
     currentLayers.push(lineLayerId);
 
-    // 3. Point / Circle Layer (Titik Jemput / Driver / Stasiun)
+    // 3. Point / Circle Layer (POI / Titik Tempat)
     const circleLayerId = `pmtiles-circle-${sourceLayerName}`;
     map.addLayer({
       id: circleLayerId,
@@ -430,9 +461,9 @@ function renderMvtLayers(sourceKey, header, vectorLayerNames) {
       ...(sourceLayerName !== 'default' ? { 'source-layer': sourceLayerName } : {}),
       filter: ['==', '$type', 'Point'],
       paint: {
-        'circle-color': '#f43f5e', // Warna merah terang untuk POI / Titik
-        'circle-radius': 6,
-        'circle-stroke-width': 2,
+        'circle-color': '#e11d48',
+        'circle-radius': 5,
+        'circle-stroke-width': 1.5,
         'circle-stroke-color': '#ffffff'
       }
     });
@@ -463,7 +494,7 @@ function fitToBounds(header) {
   if (minLon !== undefined && minLat !== undefined && maxLon !== undefined && maxLat !== undefined) {
     if (minLon === -180 && maxLon === 180 && minLat <= -85 && maxLat >= 85) {
       if (header.centerLon && header.centerLat) {
-        map.flyTo({ center: [header.centerLon, header.centerLat], zoom: header.centerZoom || 12 });
+        map.flyTo({ center: [header.centerLon, header.centerLat], zoom: header.centerZoom || 13 });
       }
       return;
     }
@@ -504,7 +535,7 @@ function setupFeatureInspection() {
     const props = feature.properties || {};
     const layerName = feature.sourceLayer || feature.layer.id;
 
-    let titleText = props.name || props.titik_jemput || props.titik_tujuan || `Fitur ${feature.geometry.type}`;
+    let titleText = props.name || props.titik_jemput || props.titik_tujuan || props.nama_objek || `Fitur ${feature.geometry.type}`;
 
     let tableHtml = `<div style="max-height: 220px; overflow-y: auto;">
       <h4 style="color: #38bdf8; font-size: 0.9rem; margin-bottom: 4px;">${escapeHtml(titleText)}</h4>
@@ -575,12 +606,22 @@ function showFeatureInDrawer(feature) {
 // 9. Event Listeners UI
 // ==========================================
 btnLoadUrl.addEventListener('click', () => {
-  loadPMTilesFromUrl(pmtilesUrlInput.value);
+  const val = pmtilesUrlInput.value.trim();
+  if (val.startsWith('[File Lokal') && activeLocalFile) {
+    loadPMTilesFromFile(activeLocalFile);
+  } else {
+    loadPMTilesFromUrl(val);
+  }
 });
 
 pmtilesUrlInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
-    loadPMTilesFromUrl(pmtilesUrlInput.value);
+    const val = pmtilesUrlInput.value.trim();
+    if (val.startsWith('[File Lokal') && activeLocalFile) {
+      loadPMTilesFromFile(activeLocalFile);
+    } else {
+      loadPMTilesFromUrl(val);
+    }
   }
 });
 
@@ -590,17 +631,29 @@ btnFitBounds.addEventListener('click', () => {
   }
 });
 
-// Pilihan Cepat: Rute Bandung Lokal
-presetBandung.addEventListener('click', () => {
-  pmtilesUrlInput.value = DEFAULT_LOCAL_PMTILES;
-  loadPMTilesFromUrl(DEFAULT_LOCAL_PMTILES);
-});
+// Pilihan Cepat: Kecamatan Sukasari (Default)
+if (presetSukasari) {
+  presetSukasari.addEventListener('click', () => {
+    pmtilesUrlInput.value = './sample-data/kec-sukasari.pmtiles';
+    loadPMTilesFromUrl('./sample-data/kec-sukasari.pmtiles');
+  });
+}
+
+// Pilihan Cepat: Rute Bandung
+if (presetBandung) {
+  presetBandung.addEventListener('click', () => {
+    pmtilesUrlInput.value = './sample-data/rute_bandung.pmtiles';
+    loadPMTilesFromUrl('./sample-data/rute_bandung.pmtiles');
+  });
+}
 
 // Pilihan Cepat: Sample Protomaps Selandia Baru
-presetSample.addEventListener('click', () => {
-  pmtilesUrlInput.value = SAMPLE_PROTOMAPS_URL;
-  loadPMTilesFromUrl(SAMPLE_PROTOMAPS_URL);
-});
+if (presetSample) {
+  presetSample.addEventListener('click', () => {
+    pmtilesUrlInput.value = SAMPLE_PROTOMAPS_URL;
+    loadPMTilesFromUrl(SAMPLE_PROTOMAPS_URL);
+  });
+}
 
 // Tombol Browse File Lokal Komputer
 btnBrowseFile.addEventListener('click', () => {
@@ -632,7 +685,8 @@ document.querySelectorAll('.basemap-btn').forEach(btn => {
 
     map.once('style.load', () => {
       if (currentPmtilesInstance && header) {
-        renderMvtLayers(currentPmtilesInstance.source.key || activeUrl, header, vectorLayerNames);
+        const key = activeLocalFile ? activeLocalFile.name : (currentPmtilesInstance.source.key || activeUrl);
+        renderMvtLayers(key, header, vectorLayerNames);
       }
     });
   });
