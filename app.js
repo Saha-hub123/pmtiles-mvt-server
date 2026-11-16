@@ -1,7 +1,7 @@
 /**
  * MVT Vector Tile Server & Viewer Client
  * Powered by MapLibre GL JS + Protomaps PMTiles
- * Designed for Cloudflare R2 & GitHub Pages
+ * Kompatibel dengan GitHub Pages, Cloudflare R2, dan File Lokal
  */
 
 // ==========================================
@@ -113,7 +113,8 @@ const BASEMAP_STYLES = {
 // ==========================================
 // 3. Konfigurasi State & Variabel Global
 // ==========================================
-// Sample data publik PMTiles untuk demonstrasi langsung jika belum ada R2
+// File lokal bawaan di repository GitHub Pages ini
+const DEFAULT_LOCAL_PMTILES = './sample-data/rute_bandung.pmtiles';
 const SAMPLE_PROTOMAPS_URL = 'https://r2-public.protomaps.com/protomaps_sample_nz.pmtiles';
 
 let currentStyle = 'positron';
@@ -125,8 +126,11 @@ let map = null;
 // DOM Elements
 const pmtilesUrlInput = document.getElementById('pmtilesUrl');
 const btnLoadUrl = document.getElementById('btnLoadUrl');
+const presetBandung = document.getElementById('presetBandung');
 const presetSample = document.getElementById('presetSample');
-const presetLocal = document.getElementById('presetLocal');
+const btnBrowseFile = document.getElementById('btnBrowseFile');
+const pmtilesFileInput = document.getElementById('pmtilesFileInput');
+
 const loadBadge = document.getElementById('loadBadge');
 const metaZoom = document.getElementById('metaZoom');
 const metaBounds = document.getElementById('metaBounds');
@@ -149,6 +153,15 @@ const opacityVal = document.getElementById('opacityVal');
 const lineWidthSlider = document.getElementById('lineWidthSlider');
 const lineWidthVal = document.getElementById('lineWidthVal');
 
+// Helper: Menghitung URL Absolut yang valid untuk protokol PMTiles
+function resolveAbsoluteUrl(rawUrl) {
+  try {
+    return new URL(rawUrl, window.location.href).href;
+  } catch (e) {
+    return rawUrl;
+  }
+}
+
 // ==========================================
 // 4. Inisialisasi Peta
 // ==========================================
@@ -156,8 +169,8 @@ function initMap() {
   map = new maplibregl.Map({
     container: 'map',
     style: BASEMAP_STYLES[currentStyle],
-    center: [107.6098, -6.9175], // Bandung, Indonesia (Default)
-    zoom: 10,
+    center: [107.575, -6.885], // Bandung, Indonesia (Default koordinat rute ULBI)
+    zoom: 12,
     pitch: 0,
     bearing: 0
   });
@@ -168,17 +181,25 @@ function initMap() {
   map.addControl(new maplibregl.FullscreenControl(), 'top-right');
 
   map.on('load', () => {
-    // Cek apakah ada query param ?url= di address bar
+    // 1. Cek apakah ada query param ?url= di address bar
     const urlParams = new URLSearchParams(window.location.search);
     const queryUrl = urlParams.get('url');
 
+    // 2. Jika dibuka lewat file:/// (double click di file explorer)
+    if (window.location.protocol === 'file:') {
+      console.warn('Halaman dibuka via protokol file://. HTTP fetch diblokir oleh kebijakan keamanan browser.');
+      pmtilesUrlInput.value = DEFAULT_LOCAL_PMTILES;
+      showLocalFileBanner();
+      return;
+    }
+
     if (queryUrl) {
       pmtilesUrlInput.value = queryUrl;
-      loadPMTiles(queryUrl);
+      loadPMTilesFromUrl(queryUrl);
     } else {
-      // Default: tawarkan sample atau biarkan input kosong
-      pmtilesUrlInput.value = SAMPLE_PROTOMAPS_URL;
-      loadPMTiles(SAMPLE_PROTOMAPS_URL);
+      // Default: Muat data rute_bandung.pmtiles dari repo
+      pmtilesUrlInput.value = DEFAULT_LOCAL_PMTILES;
+      loadPMTilesFromUrl(DEFAULT_LOCAL_PMTILES);
     }
   });
 
@@ -186,26 +207,51 @@ function initMap() {
   setupFeatureInspection();
 }
 
+function showLocalFileBanner() {
+  updateStatusBadge('idle', 'Mode Offline');
+  alert(
+    'PERHATIAN (Membuka via file://):\n\n' +
+    'Browser memblokir permintaan file lokal lewat URL jika dibuka langsung (file:///C:/...).\n\n' +
+    'Solusi sangat mudah (pilih salah satu):\n' +
+    '1. Klik tombol "Pilih File .pmtiles dari Laptop" lalu pilih file rute_bandung.pmtiles Anda.\n' +
+    '2. Atau jalankan server lokal: ketik "python -m http.server 8000" di terminal lalu buka http://localhost:8000\n' +
+    '3. Atau buka web ini yang sudah terpasang di GitHub Pages.'
+  );
+}
+
 // ==========================================
-// 5. Muat Data PMTiles dari R2 / URL
+// 5. Muat Data PMTiles dari URL (GitHub Pages / R2)
 // ==========================================
-async function loadPMTiles(rawUrl) {
+async function loadPMTilesFromUrl(rawUrl) {
   if (!rawUrl || rawUrl.trim() === '') {
     alert('Silakan masukkan URL file PMTiles Anda!');
     return;
   }
 
-  const url = rawUrl.trim();
-  showLoading(`Membaca header PMTiles dari ${new URL(url).hostname}...`);
+  // Cek jika berjalan di file:///
+  if (window.location.protocol === 'file:') {
+    showLocalFileBanner();
+    return;
+  }
+
+  const fullUrl = resolveAbsoluteUrl(rawUrl.trim());
+  let displayHost = 'Server';
+  try {
+    displayHost = new URL(fullUrl).hostname || 'Lokal';
+  } catch (e) {
+    displayHost = 'Lokal';
+  }
+
+  showLoading(`Membaca header PMTiles dari ${displayHost}...`);
   updateStatusBadge('loading', 'Loading');
 
   try {
-    // 1. Buat instance PMTiles client
-    const pmtilesInstance = new pmtiles.PMTiles(url);
+    // 1. Buat instance PMTiles client dengan URL absolut
+    const pmtilesInstance = new pmtiles.PMTiles(fullUrl);
     protocol.add(pmtilesInstance);
     currentPmtilesInstance = pmtilesInstance;
 
-    // 2. Baca Header arsip (menggunakan HTTP Range Request ke R2)
+    // 2. Baca Header arsip (menggunakan HTTP Range Request)
     const header = await pmtilesInstance.getHeader();
     const metadata = await pmtilesInstance.getMetadata();
     currentMetadata = { header, metadata };
@@ -214,34 +260,21 @@ async function loadPMTiles(rawUrl) {
     console.log('PMTiles Metadata:', metadata);
 
     // 3. Tampilkan informasi metadata di UI
-    metaZoom.textContent = `z${header.minZoom} - z${header.maxZoom}`;
-    metaBounds.textContent = `[${header.minLon.toFixed(3)}, ${header.minLat.toFixed(3)}] ke [${header.maxLon.toFixed(3)}, ${header.maxLat.toFixed(3)}]`;
-    metaType.textContent = header.tileType === 1 ? 'MVT (Vector)' : (header.tileType === 2 ? 'PNG' : 'Raster');
-    
-    // Deteksi layers
-    let vectorLayerNames = [];
-    if (metadata && metadata.vector_layers) {
-      vectorLayerNames = metadata.vector_layers.map(l => l.id);
-    } else if (metadata && metadata.layers) {
-      vectorLayerNames = metadata.layers.map(l => l.id || l.name);
-    }
-
-    metaLayers.textContent = vectorLayerNames.length > 0 
-      ? vectorLayerNames.slice(0, 3).join(', ') + (vectorLayerNames.length > 3 ? ` (+${vectorLayerNames.length - 3})` : '')
-      : 'Default / Single';
-
-    btnFitBounds.disabled = false;
+    displayMetadata(header, metadata);
 
     // 4. Update atau Pasang Layer ke MapLibre
-    renderMvtLayers(url, header, vectorLayerNames);
+    let vectorLayerNames = extractLayerNames(metadata);
+    renderMvtLayers(fullUrl, header, vectorLayerNames);
 
     // 5. Auto zoom ke batas data (bounds)
     fitToBounds(header);
 
     // 6. Update URL query param & status
-    const currentUrl = new URL(window.location);
-    currentUrl.searchParams.set('url', url);
-    window.history.replaceState({}, '', currentUrl);
+    try {
+      const currentUrl = new URL(window.location);
+      currentUrl.searchParams.set('url', rawUrl);
+      window.history.replaceState({}, '', currentUrl);
+    } catch (e) {}
 
     updateStatusBadge('success', 'Terkoneksi');
     hideLoading();
@@ -252,29 +285,102 @@ async function loadPMTiles(rawUrl) {
 
     let errorMsg = `Gagal memuat PMTiles: ${err.message}.\n\n`;
     if (err.message && err.message.toLowerCase().includes('cors')) {
-      errorMsg += 'PENYEBAB: Terhalang CORS di Cloudflare R2!\nPastikan Anda telah memasang aturan CORS di Cloudflare R2 Bucket Settings sesuai petunjuk cors-r2.json.';
+      errorMsg += 'PENYEBAB: Terhalang CORS!\nJika menggunakan Cloudflare R2, pastikan aturan CORS sudah terpasang sesuai cors-r2.json.';
+    } else if (err.message && (err.message.includes('404') || err.message.includes('Not Found'))) {
+      errorMsg += 'PENYEBAB: File tidak ditemukan (404)!\nPastikan file rute_bandung.pmtiles sudah ter-upload di folder sample-data/ pada GitHub Pages.';
     } else {
-      errorMsg += 'Tips:\n1. Pastikan URL publik R2 benar dan file bisa diakses.\n2. Pastikan file berformat .pmtiles valid.\n3. Periksa aturan CORS pada bucket Cloudflare R2 Anda.';
+      errorMsg += 'Tips:\n1. Pastikan URL benar.\n2. Jika di lokal, gunakan tombol "Pilih File .pmtiles dari Laptop" atau jalankan server lokal: python -m http.server 8000';
     }
     alert(errorMsg);
   }
 }
 
 // ==========================================
+// 5B. Muat Data PMTiles Langsung dari File Lokal (File API)
+// ==========================================
+async function loadPMTilesFromFile(file) {
+  if (!file) return;
+
+  showLoading(`Membaca file lokal: ${file.name}...`);
+  updateStatusBadge('loading', 'Loading File');
+
+  try {
+    // 1. Gunakan FileSource dari library PMTiles (tanpa perlu web server!)
+    const fileSource = new pmtiles.FileSource(file);
+    const pmtilesInstance = new pmtiles.PMTiles(fileSource);
+    
+    // Daftarkan ke protokol dengan key unik nama file
+    const uniqueSourceKey = `file://${file.name}_${Date.now()}`;
+    protocol.add(pmtilesInstance);
+    currentPmtilesInstance = pmtilesInstance;
+
+    // 2. Baca Header arsip langsung dari disk
+    const header = await pmtilesInstance.getHeader();
+    const metadata = await pmtilesInstance.getMetadata();
+    currentMetadata = { header, metadata };
+
+    console.log('File Header:', header);
+    console.log('File Metadata:', metadata);
+
+    // 3. Update UI
+    pmtilesUrlInput.value = `[File Lokal: ${file.name}]`;
+    displayMetadata(header, metadata);
+
+    // 4. Render ke peta
+    let vectorLayerNames = extractLayerNames(metadata);
+    renderMvtLayers(uniqueSourceKey, header, vectorLayerNames);
+
+    // 5. Zoom ke batas data
+    fitToBounds(header);
+
+    updateStatusBadge('success', 'File Aktif');
+    hideLoading();
+  } catch (err) {
+    console.error('Gagal membaca file PMTiles lokal:', err);
+    updateStatusBadge('error', 'Gagal');
+    hideLoading();
+    alert(`Gagal membaca file ${file.name}: ${err.message}`);
+  }
+}
+
+function extractLayerNames(metadata) {
+  let names = [];
+  if (metadata && metadata.vector_layers) {
+    names = metadata.vector_layers.map(l => l.id);
+  } else if (metadata && metadata.layers) {
+    names = metadata.layers.map(l => l.id || l.name);
+  }
+  return names;
+}
+
+function displayMetadata(header, metadata) {
+  metaZoom.textContent = `z${header.minZoom} - z${header.maxZoom}`;
+  metaBounds.textContent = `[${header.minLon.toFixed(3)}, ${header.minLat.toFixed(3)}] ke [${header.maxLon.toFixed(3)}, ${header.maxLat.toFixed(3)}]`;
+  metaType.textContent = header.tileType === 1 ? 'MVT (Vector)' : (header.tileType === 2 ? 'PNG' : 'Raster');
+
+  const vectorLayerNames = extractLayerNames(metadata);
+  metaLayers.textContent = vectorLayerNames.length > 0 
+    ? vectorLayerNames.slice(0, 3).join(', ') + (vectorLayerNames.length > 3 ? ` (+${vectorLayerNames.length - 3})` : '')
+    : 'Default / Single';
+
+  btnFitBounds.disabled = false;
+}
+
+// ==========================================
 // 6. Rendering Layer MVT di Peta
 // ==========================================
-function renderMvtLayers(url, header, vectorLayerNames) {
+function renderMvtLayers(sourceKey, header, vectorLayerNames) {
   const sourceId = 'r2-pmtiles-source';
 
   // Hapus layer lama jika sudah ada
   removeExistingMvtLayers();
 
   // Tambahkan vector source PMTiles ke MapLibre
-  // Format protokol: pmtiles://https://...
+  // Format protokol: pmtiles://<sourceKey>
   if (!map.getSource(sourceId)) {
     map.addSource(sourceId, {
       type: 'vector',
-      url: `pmtiles://${url}`,
+      url: `pmtiles://${sourceKey}`,
       minzoom: header.minZoom,
       maxzoom: header.maxZoom
     });
@@ -284,14 +390,12 @@ function renderMvtLayers(url, header, vectorLayerNames) {
   const opacity = parseFloat(opacitySlider.value);
   const lineWidth = parseFloat(lineWidthSlider.value);
 
-  // Jika arsip memiliki metadata vector_layers, buat layer untuk masing-masing
-  // Jika tidak, gunakan layer generik
   const layersToCreate = vectorLayerNames.length > 0 ? vectorLayerNames : ['default'];
 
   currentLayers = [];
 
   layersToCreate.forEach((sourceLayerName) => {
-    // 1. Polygon Fill Layer
+    // 1. Polygon Fill Layer (Area / Zona)
     const fillLayerId = `pmtiles-fill-${sourceLayerName}`;
     map.addLayer({
       id: fillLayerId,
@@ -306,7 +410,7 @@ function renderMvtLayers(url, header, vectorLayerNames) {
     });
     currentLayers.push(fillLayerId);
 
-    // 2. Line / Polygon Border Layer
+    // 2. Line Layer (Rute Jalan / Garis Batas)
     const lineLayerId = `pmtiles-line-${sourceLayerName}`;
     map.addLayer({
       id: lineLayerId,
@@ -314,14 +418,14 @@ function renderMvtLayers(url, header, vectorLayerNames) {
       source: sourceId,
       ...(sourceLayerName !== 'default' ? { 'source-layer': sourceLayerName } : {}),
       paint: {
-        'line-color': primaryColor,
+        'line-color': '#0284c7', // Warna garis tegas
         'line-width': lineWidth,
-        'line-opacity': 0.9
+        'line-opacity': 0.95
       }
     });
     currentLayers.push(lineLayerId);
 
-    // 3. Point / Circle Layer
+    // 3. Point / Circle Layer (Titik Jemput / Driver / Stasiun)
     const circleLayerId = `pmtiles-circle-${sourceLayerName}`;
     map.addLayer({
       id: circleLayerId,
@@ -330,9 +434,9 @@ function renderMvtLayers(url, header, vectorLayerNames) {
       ...(sourceLayerName !== 'default' ? { 'source-layer': sourceLayerName } : {}),
       filter: ['==', '$type', 'Point'],
       paint: {
-        'circle-color': primaryColor,
-        'circle-radius': 5,
-        'circle-stroke-width': 1.5,
+        'circle-color': '#f43f5e', // Warna merah terang untuk POI / Titik
+        'circle-radius': 6,
+        'circle-stroke-width': 2,
         'circle-stroke-color': '#ffffff'
       }
     });
@@ -361,10 +465,9 @@ function fitToBounds(header) {
   if (!header) return;
   const { minLon, minLat, maxLon, maxLat } = header;
   if (minLon !== undefined && minLat !== undefined && maxLon !== undefined && maxLat !== undefined) {
-    // Tangani kemungkinan koordinat default dunia [-180, -90, 180, 90]
     if (minLon === -180 && maxLon === 180 && minLat <= -85 && maxLat >= 85) {
       if (header.centerLon && header.centerLat) {
-        map.flyTo({ center: [header.centerLon, header.centerLat], zoom: header.centerZoom || 8 });
+        map.flyTo({ center: [header.centerLon, header.centerLat], zoom: header.centerZoom || 12 });
       }
       return;
     }
@@ -386,13 +489,12 @@ function setupFeatureInspection() {
   const popup = new maplibregl.Popup({
     closeButton: true,
     closeOnClick: false,
-    maxWidth: '340px'
+    maxWidth: '360px'
   });
 
   map.on('click', (e) => {
     if (currentLayers.length === 0) return;
 
-    // Ambil semua fitur yang ter-render di titik klik
     const features = map.queryRenderedFeatures(e.point, {
       layers: currentLayers.filter(l => map.getLayer(l))
     });
@@ -406,10 +508,12 @@ function setupFeatureInspection() {
     const props = feature.properties || {};
     const layerName = feature.sourceLayer || feature.layer.id;
 
-    // Format tabel properti
-    let tableHtml = `<div style="max-height: 200px; overflow-y: auto;">
-      <strong style="color: #38bdf8; font-size: 0.85rem;">Layer: ${escapeHtml(layerName)}</strong>
-      <table style="width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 0.75rem;">`;
+    let titleText = props.name || props.titik_jemput || props.titik_tujuan || `Fitur ${feature.geometry.type}`;
+
+    let tableHtml = `<div style="max-height: 220px; overflow-y: auto;">
+      <h4 style="color: #38bdf8; font-size: 0.9rem; margin-bottom: 4px;">${escapeHtml(titleText)}</h4>
+      <div style="font-size: 0.72rem; color: #94a3b8; margin-bottom: 6px;">Layer: ${escapeHtml(layerName)} | Tipe: ${feature.geometry.type}</div>
+      <table style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">`;
 
     const propKeys = Object.keys(props);
     if (propKeys.length === 0) {
@@ -426,14 +530,10 @@ function setupFeatureInspection() {
     }
     tableHtml += `</table></div>`;
 
-    // Tampilkan popup di titik koordinat
     popup.setLngLat(e.lngLat).setHTML(tableHtml).addTo(map);
-
-    // Tampilkan juga di Feature Drawer di sudut kanan bawah
     showFeatureInDrawer(feature);
   });
 
-  // Ganti cursor pointer saat hover fitur
   map.on('mousemove', (e) => {
     if (currentLayers.length === 0) return;
     const features = map.queryRenderedFeatures(e.point, {
@@ -479,12 +579,12 @@ function showFeatureInDrawer(feature) {
 // 9. Event Listeners UI
 // ==========================================
 btnLoadUrl.addEventListener('click', () => {
-  loadPMTiles(pmtilesUrlInput.value);
+  loadPMTilesFromUrl(pmtilesUrlInput.value);
 });
 
 pmtilesUrlInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
-    loadPMTiles(pmtilesUrlInput.value);
+    loadPMTilesFromUrl(pmtilesUrlInput.value);
   }
 });
 
@@ -494,21 +594,28 @@ btnFitBounds.addEventListener('click', () => {
   }
 });
 
-// Presets
-presetSample.addEventListener('click', () => {
-  pmtilesUrlInput.value = SAMPLE_PROTOMAPS_URL;
-  loadPMTiles(SAMPLE_PROTOMAPS_URL);
+// Pilihan Cepat: Rute Bandung Lokal
+presetBandung.addEventListener('click', () => {
+  pmtilesUrlInput.value = DEFAULT_LOCAL_PMTILES;
+  loadPMTilesFromUrl(DEFAULT_LOCAL_PMTILES);
 });
 
-presetLocal.addEventListener('click', () => {
-  alert(
-    'CARA MEMAKAI CLOUDFLARE R2 ANDA:\n\n' +
-    '1. Upload file .pmtiles ke R2 Bucket Anda.\n' +
-    '2. Aktifkan Public Bucket / Custom Domain di R2 Settings.\n' +
-    '3. Pasang CORS Policy (lihat cors-r2.json).\n' +
-    '4. Salin URL publik file Anda (misal: https://pub-xxxx.r2.dev/data.pmtiles).\n' +
-    '5. Paste ke kotak input di atas lalu klik "Muat"!'
-  );
+// Pilihan Cepat: Sample Protomaps Selandia Baru
+presetSample.addEventListener('click', () => {
+  pmtilesUrlInput.value = SAMPLE_PROTOMAPS_URL;
+  loadPMTilesFromUrl(SAMPLE_PROTOMAPS_URL);
+});
+
+// Tombol Browse File Lokal Komputer
+btnBrowseFile.addEventListener('click', () => {
+  pmtilesFileInput.click();
+});
+
+pmtilesFileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    loadPMTilesFromFile(file);
+  }
 });
 
 // Ganti Basemap
@@ -521,20 +628,15 @@ document.querySelectorAll('.basemap-btn').forEach(btn => {
     btn.classList.add('active');
     currentStyle = styleKey;
 
-    // Simpan state layer PMTiles sebelum ganti style
     const activeUrl = pmtilesUrlInput.value;
     const header = currentMetadata ? currentMetadata.header : null;
-    let vectorLayerNames = [];
-    if (currentMetadata && currentMetadata.metadata && currentMetadata.metadata.vector_layers) {
-      vectorLayerNames = currentMetadata.metadata.vector_layers.map(l => l.id);
-    }
+    let vectorLayerNames = extractLayerNames(currentMetadata ? currentMetadata.metadata : null);
 
     map.setStyle(BASEMAP_STYLES[styleKey]);
 
-    // Pasang ulang layer PMTiles setelah basemap baru selesai termuat
     map.once('style.load', () => {
-      if (activeUrl && header) {
-        renderMvtLayers(activeUrl, header, vectorLayerNames);
+      if (currentPmtilesInstance && header) {
+        renderMvtLayers(currentPmtilesInstance.source.key || activeUrl, header, vectorLayerNames);
       }
     });
   });
@@ -545,8 +647,6 @@ colorPicker.addEventListener('input', (e) => {
   const color = e.target.value;
   currentLayers.forEach(id => {
     if (id.includes('fill') && map.getLayer(id)) map.setPaintProperty(id, 'fill-color', color);
-    if (id.includes('line') && map.getLayer(id)) map.setPaintProperty(id, 'line-color', color);
-    if (id.includes('circle') && map.getLayer(id)) map.setPaintProperty(id, 'circle-color', color);
   });
 });
 
@@ -606,5 +706,5 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-// Jalankan aplikasi
+// Inisialisasi peta
 initMap();

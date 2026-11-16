@@ -164,6 +164,34 @@ body, html {
   margin-right: 4px;
 }
 
+.separator-text {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 6px 0;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+}
+
+.separator-text::before,
+.separator-text::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.15);
+}
+
+.separator-text span {
+  padding: 0 8px;
+}
+
+.badge-btn.active-preset {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.4);
+  font-weight: 600;
+}
+
 /* Form Controls */
 label {
   font-size: 0.85rem;
